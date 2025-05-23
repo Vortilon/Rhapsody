@@ -13,5 +13,16 @@ module.exports = {
         description: 'Process a PDF with OCR to extract text',
       },
     },
+    {
+      method: 'POST',
+      path: '/pdfs/:document_id/analyze',
+      handler: 'pdf.analyzePDF',
+      config: {
+        policies: [],
+        auth: false, // Disable authentication for testing
+        middlewares: [],
+        description: 'Analyze a processed PDF document using AI for contract understanding',
+      },
+    },
   ],
 };

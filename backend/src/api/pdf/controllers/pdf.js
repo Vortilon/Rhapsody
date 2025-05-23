@@ -152,7 +152,7 @@ module.exports = {
           fs.unlinkSync(imagePath);
           console.log(`Temporary image deleted: ${imagePath}`);
         } catch (cleanupError) {
-          console.warn(`Warning: Failed to delete temporary image: ${imagePath}`, cleanupError);
+          console.warn(`Warning: Failed to delete temporary file: ${imagePath}`, cleanupError);
         }
       }
 
@@ -185,4 +185,63 @@ module.exports = {
       });
     }
   },
+  
+  async analyzePDF(ctx) {
+    try {
+      const { id } = ctx.params;
+      const { query } = ctx.request.body || {};
+      
+      if (!query) {
+        return ctx.badRequest('Query parameter is required for PDF analysis');
+      }
+      
+      console.log(`Analyzing PDF ${id} with query: ${query}`);
+      
+      // Find the PDF with extracted text
+      const pdfEntry = await strapi.db.query('api::pdf.pdf').findOne({
+        where: {
+          document_id: id,
+          extracted_text: { $ne: null }
+        },
+        select: ['id', 'title', 'extracted_text'],
+      });
+      
+      if (!pdfEntry || !pdfEntry.extracted_text) {
+        return ctx.badRequest('PDF not found or text extraction not completed');
+      }
+      
+      // In a real implementation, this would call an AI service like OpenAI
+      // For now, we'll simulate a response based on the query and extracted text
+      
+      const extractedText = pdfEntry.extracted_text;
+      const textSnippet = extractedText.substring(0, 1000); // First 1000 chars for demo
+      
+      // Simple keyword matching for demonstration
+      const keywords = query.toLowerCase().split(' ');
+      const matches = [];
+      
+      // Find paragraphs containing keywords
+      const paragraphs = extractedText.split('\n\n');
+      for (const paragraph of paragraphs) {
+        if (keywords.some(keyword => paragraph.toLowerCase().includes(keyword))) {
+          matches.push(paragraph);
+          if (matches.length >= 3) break; // Limit to 3 matches
+        }
+      }
+      
+      return ctx.send({
+        document_id: id,
+        query: query,
+        matches: matches,
+        match_count: matches.length,
+        analysis: `The document appears to be a contract with ${paragraphs.length} paragraphs. ${matches.length} sections were found matching your query.`,
+        recommendation: "For production use, integrate with OpenAI's API for more sophisticated analysis."
+      });
+    } catch (error) {
+      console.error('PDF Analysis Error:', error);
+      return ctx.badRequest('Error analyzing PDF', { 
+        details: error.message
+      });
+    }
+  }
 };
