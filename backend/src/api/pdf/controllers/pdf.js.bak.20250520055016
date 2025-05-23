@@ -1,0 +1,173 @@
+'use strict';
+
+const { createWorker } = require('tesseract.js');
+const fs = require('fs');
+const path = require('path');
+const { fromPath } = require('pdf2pic');
+
+module.exports = {
+  async processPDF(ctx) {
+    console.log('=== OCR PROCESS STARTED ===');
+    try {
+      const { id } = ctx.params;
+      console.log(`Processing PDF with document_id: ${id}`);
+      
+      // Find the published PDF entry
+      const pdfEntry = await strapi.db.query('api::pdf.pdf').findOne({
+        where: {
+          document_id: id,
+          // Try both publishedAt (Strapi v5) and published_at (older versions)
+          $or: [
+            { publishedAt: { $ne: null } },
+            { published_at: { $ne: null } }
+          ]
+        },
+        select: ['id', 'file'],
+      });
+
+      console.log('PDF Entry:', pdfEntry);
+
+      if (!pdfEntry) {
+        console.log(`No PDF entry found with document_id: ${id}`);
+        return ctx.badRequest('PDF entry not found');
+      }
+
+      if (!pdfEntry.file) {
+        console.log(`PDF entry found but file data is missing for document_id: ${id}`);
+        return ctx.badRequest('PDF file data not found in entry');
+      }
+
+      // Parse file data if it's a string
+      const fileData = typeof pdfEntry.file === 'string' ? JSON.parse(pdfEntry.file) : pdfEntry.file;
+      console.log('Parsed File Data:', fileData);
+
+      if (!fileData.id) {
+        console.log(`File data does not contain an ID for document_id: ${id}`);
+        return ctx.badRequest('Invalid file data structure');
+      }
+
+      // Fetch the file entry using the CORRECT model name: plugin::upload.file
+      const fileEntry = await strapi.db.query('plugin::upload.file').findOne({
+        where: { id: fileData.id },
+        select: ['url', 'hash', 'name'],
+      });
+
+      console.log('File Entry:', fileEntry);
+
+      if (!fileEntry || !fileEntry.url) {
+        console.log(`File entry not found or missing URL for file ID: ${fileData.id}`);
+        return ctx.badRequest('File entry not found in files table');
+      }
+
+      // Construct the full path using the URL
+      const relativePath = fileEntry.url; // e.g., /uploads/invoice_79e43b0785.pdf
+      const pdfPath = path.join('/root/vortilon-app/backend/public', relativePath);
+      console.log('PDF Path:', pdfPath);
+
+      // Verify file exists before proceeding
+      if (!fs.existsSync(pdfPath)) {
+        console.error(`File does not exist at path: ${pdfPath}`);
+        return ctx.badRequest('PDF file not found on disk', { path: pdfPath });
+      }
+      console.log(`File exists at path: ${pdfPath}`);
+
+      // Create a unique output name to avoid conflicts
+      const timestamp = Date.now();
+      const outputDir = '/root/vortilon-app/backend/public/uploads';
+      const outputBaseName = `temp_${timestamp}`;
+      
+      const options = {
+        density: 100,
+        format: 'png',
+        width: 600,
+        height: 600,
+        outputDir: outputDir,
+        outputName: outputBaseName
+      };
+      
+      console.log(`Converting PDF to image with options:`, options);
+      
+      // Convert PDF to image - IMPORTANT: Use the actual file path
+      const convert = fromPath(pdfPath, options);
+      const conversionResult = await convert.bulk(1); // Only convert first page
+      console.log('Conversion result:', conversionResult);
+
+      // Check if conversion was successful
+      if (!conversionResult || conversionResult.length === 0) {
+        console.error('PDF conversion failed to produce any output');
+        return ctx.badRequest('PDF conversion failed');
+      }
+
+      // Get the actual output path from the conversion result
+      const outputInfo = conversionResult[0];
+      console.log('Output info:', outputInfo);
+      
+      // The path in the result is relative, we need to construct the absolute path
+      // The file is typically named outputBaseName + '-1.png'
+      const imagePath = path.join(outputDir, `${outputBaseName}-1.png`);
+      console.log('Image Path:', imagePath);
+
+      // Double check the file exists
+      if (!fs.existsSync(imagePath)) {
+        // Try alternative path based on conversion result
+        const altImagePath = path.join(outputDir, path.basename(outputInfo.path));
+        console.log('Trying alternative image path:', altImagePath);
+        
+        if (!fs.existsSync(altImagePath)) {
+          console.error(`Converted image not found at either path`);
+          return ctx.badRequest('Converted image not found');
+        }
+        
+        // Use the alternative path if it exists
+        console.log(`Using alternative image path: ${altImagePath}`);
+        imagePath = altImagePath;
+      }
+
+      // Perform OCR
+      console.log('Initializing Tesseract worker...');
+      const worker = await createWorker();
+      await worker.loadLanguage('eng');
+      await worker.initialize('eng');
+      console.log('Tesseract worker initialized, starting OCR...');
+
+      const { data: { text } } = await worker.recognize(imagePath);
+      console.log('OCR completed successfully. Text length:', text.length);
+      console.log('First 100 chars of extracted text:', text.substring(0, 100));
+      
+      await worker.terminate();
+      console.log('Tesseract worker terminated');
+
+      // Clean up temporary image file
+      try {
+        fs.unlinkSync(imagePath);
+        console.log('Temporary image deleted:', imagePath);
+      } catch (cleanupError) {
+        console.warn('Warning: Failed to delete temporary image:', cleanupError);
+      }
+
+      // Update the PDF entry with extracted text
+      await strapi.entityService.update('api::pdf.pdf', pdfEntry.id, {
+        data: {
+          extracted_text: text,
+        },
+      });
+      console.log(`Updated PDF entry ${pdfEntry.id} with extracted text`);
+
+      console.log('=== OCR PROCESS COMPLETED SUCCESSFULLY ===');
+      return ctx.send({ 
+        message: 'OCR processed successfully', 
+        text_length: text.length,
+        text_preview: text.substring(0, 100),
+        document_id: id,
+        pdf_id: pdfEntry.id
+      });
+    } catch (error) {
+      console.error('=== OCR PROCESS FAILED ===');
+      console.error('Unhandled OCR Error:', error);
+      return ctx.badRequest('Error processing PDF', { 
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
+  },
+};

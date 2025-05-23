@@ -1,0 +1,27 @@
+{
+  "kind": "collectionType",
+  "collectionName": "conditions",
+  "info": {
+    "singularName": "condition",
+    "pluralName": "conditions",
+    "displayName": "Condition"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "description": {
+      "type": "text"
+    },
+    "pdf": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::pdf.pdf",
+      "inversedBy": "conditions"
+    }
+  }
+}

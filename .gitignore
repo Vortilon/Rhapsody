@@ -1,0 +1,38 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Strapi build and cache
+backend/.cache
+backend/build
+backend/.tmp
+backend/public/uploads/*
+!backend/public/uploads/.gitkeep
+
+# Frontend build
+frontend/build
+
+# Environment variables
+.env
+*.env
+*.env.*
+
+# Logs
+*.log
+logs/
+pids/
+*.pid
+
+# Temporary files
+*.tmp
+*.bak
+
+# Strapi database files (if any)
+backend/database.sqlite
+
+# macOS and editor files
+.DS_Store
+.idea/
+*.sublime-project
+*.sublime-workspace

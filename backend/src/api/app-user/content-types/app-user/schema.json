@@ -1,0 +1,35 @@
+{
+  "kind": "collectionType",
+  "collectionName": "app_users",
+  "info": {
+    "singularName": "app-user",
+    "pluralName": "app-users",
+    "displayName": "AppUser",
+    "description": "Custom user model for the Vortilon app"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "attributes": {
+    "username": {
+      "type": "string",
+      "required": true
+    },
+    "email": {
+      "type": "email",
+      "required": true,
+      "unique": true
+    },
+    "role": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "plugin::users-permissions.role"
+    },
+    "pdfs": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::pdf.pdf",
+      "mappedBy": "uploaded_by"
+    }
+  }
+}

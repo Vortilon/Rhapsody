@@ -1,0 +1,32 @@
+{
+  "kind": "collectionType",
+  "collectionName": "lessors",
+  "info": {
+    "singularName": "lessor",
+    "pluralName": "lessors",
+    "displayName": "Lessor"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "email": {
+      "type": "email",
+      "required": true
+    },
+    "logo": {
+      "type": "media",
+      "multiple": false
+    },
+    "pdfs": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::pdf.pdf",
+      "mappedBy": "lessor"
+    }
+  }
+}

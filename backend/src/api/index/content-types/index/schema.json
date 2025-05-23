@@ -1,0 +1,28 @@
+{
+  "kind": "collectionType",
+  "collectionName": "indexes",
+  "info": {
+    "singularName": "index",
+    "pluralName": "indexes",
+    "displayName": "Index"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "value": {
+      "type": "string",
+      "required": true
+    },
+    "pdf": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::pdf.pdf",
+      "inversedBy": "indexes"
+    }
+  }
+}

@@ -1,0 +1,223 @@
+'use strict';
+
+const { createWorker } = require('tesseract.js');
+const fs = require('fs').promises;
+const path = require('path');
+const { fromPath } = require('pdf2pic');
+const { unlink, existsSync } = require('fs');
+
+// Helper function to safely parse JSON
+const safeJSONParse = (str) => {
+  try {
+    return typeof str === 'string' ? JSON.parse(str) : str;
+  } catch (e) {
+    console.error('JSON Parse Error:', e);
+    return str;
+  }
+};
+
+// Helper function to check if file exists (synchronous)
+const fileExistsSync = (filePath) => {
+  try {
+    return existsSync(filePath);
+  } catch (e) {
+    console.error('File Check Error:', e);
+    return false;
+  }
+};
+
+module.exports = {
+  async processPDF(ctx) {
+    let tempFiles = [];
+    
+    try {
+      console.log('=== OCR PROCESS STARTED ===');
+      const { id } = ctx.params;
+      console.log(`Processing PDF with document_id: ${id}`);
+      
+      // Find the published PDF entry
+      let pdfEntry;
+      try {
+        pdfEntry = await strapi.db.query('api::pdf.pdf').findOne({
+          where: {
+            document_id: id,
+            // Try both publishedAt (Strapi v5) and published_at (older versions)
+            $or: [
+              { publishedAt: { $ne: null } },
+              { published_at: { $ne: null } }
+            ]
+          },
+          select: ['id', 'file'],
+        });
+        console.log('PDF Entry found:', pdfEntry);
+      } catch (dbError) {
+        console.error('Database query error:', dbError);
+        return ctx.badRequest('Database query failed', { error: dbError.message });
+      }
+
+      if (!pdfEntry) {
+        console.log(`No PDF entry found with document_id: ${id}`);
+        return ctx.badRequest('PDF entry not found');
+      }
+
+      if (!pdfEntry.file) {
+        console.log(`PDF entry found but file data is missing for document_id: ${id}`);
+        return ctx.badRequest('PDF file data not found in entry');
+      }
+
+      // Parse file data if it's a string
+      let fileData;
+      try {
+        fileData = safeJSONParse(pdfEntry.file);
+        console.log('Parsed File Data:', fileData);
+      } catch (parseError) {
+        console.error('File data parse error:', parseError);
+        return ctx.badRequest('Failed to parse file data', { error: parseError.message });
+      }
+
+      if (!fileData.id) {
+        console.log(`File data does not contain an ID for document_id: ${id}`);
+        return ctx.badRequest('Invalid file data structure');
+      }
+
+      // Fetch the file entry using the correct model name: plugin::upload.file
+      let fileEntry;
+      try {
+        fileEntry = await strapi.db.query('plugin::upload.file').findOne({
+          where: { id: fileData.id },
+          select: ['url', 'hash', 'name'],
+        });
+        console.log('File Entry:', fileEntry);
+      } catch (fileQueryError) {
+        console.error('File query error:', fileQueryError);
+        return ctx.badRequest('Failed to query file entry', { error: fileQueryError.message });
+      }
+
+      if (!fileEntry || !fileEntry.url) {
+        console.log(`File entry not found or missing URL for file ID: ${fileData.id}`);
+        return ctx.badRequest('File entry not found in files table');
+      }
+
+      // Construct the full path using the URL
+      const relativePath = fileEntry.url; // e.g., /uploads/invoice_79e43b0785.pdf
+      const pdfPath = path.join('/root/vortilon-app/backend/public', relativePath);
+      console.log('PDF Path:', pdfPath);
+
+      // Verify file exists before proceeding
+      if (!fileExistsSync(pdfPath)) {
+        console.error(`File does not exist at path: ${pdfPath}`);
+        return ctx.badRequest('PDF file not found on disk', { path: pdfPath });
+      }
+      console.log(`File exists at path: ${pdfPath}`);
+
+      // Create a unique output name to avoid conflicts
+      const timestamp = Date.now();
+      const outputDir = '/root/vortilon-app/backend/public/uploads';
+      const outputBaseName = `temp_${pdfEntry.id}_${timestamp}`;
+      
+      const options = {
+        density: 100,
+        format: 'png',
+        width: 600,
+        height: 600,
+        outputDir: outputDir,
+        outputName: outputBaseName
+      };
+      
+      console.log(`Converting PDF to image with options:`, options);
+      
+      // Convert PDF to image
+      let conversionResult;
+      try {
+        const convert = fromPath(pdfPath, options);
+        conversionResult = await convert.bulk(-1);
+        console.log('Conversion result:', conversionResult);
+      } catch (conversionError) {
+        console.error('PDF to image conversion error:', conversionError);
+        return ctx.badRequest('Failed to convert PDF to image', { error: conversionError.message });
+      }
+
+      // The first page is typically named outputBaseName + '-1.png'
+      const imagePath = path.join(outputDir, `${outputBaseName}-1.png`);
+      tempFiles.push(imagePath);
+      console.log('Image Path:', imagePath);
+
+      // Verify image exists before OCR
+      if (!fileExistsSync(imagePath)) {
+        console.error(`Converted image does not exist at path: ${imagePath}`);
+        return ctx.badRequest('Converted image not found', { path: imagePath });
+      }
+      console.log(`Converted image exists at path: ${imagePath}`);
+
+      // Perform OCR
+      let extractedText = '';
+      try {
+        console.log('Initializing Tesseract worker...');
+        const worker = await createWorker();
+        await worker.loadLanguage('eng');
+        await worker.initialize('eng');
+        console.log('Tesseract worker initialized, starting OCR...');
+
+        const result = await worker.recognize(imagePath);
+        extractedText = result.data.text;
+        console.log('OCR completed successfully. Text length:', extractedText.length);
+        console.log('First 100 chars of extracted text:', extractedText.substring(0, 100));
+        
+        await worker.terminate();
+        console.log('Tesseract worker terminated');
+      } catch (ocrError) {
+        console.error('OCR processing error:', ocrError);
+        return ctx.badRequest('Failed to perform OCR', { error: ocrError.message });
+      }
+
+      // Update the PDF entry with extracted text
+      try {
+        await strapi.entityService.update('api::pdf.pdf', pdfEntry.id, {
+          data: {
+            extracted_text: extractedText,
+          },
+        });
+        console.log(`Updated PDF entry ${pdfEntry.id} with extracted text`);
+      } catch (updateError) {
+        console.error('Database update error:', updateError);
+        return ctx.badRequest('Failed to update database with extracted text', { error: updateError.message });
+      }
+
+      // Clean up temporary files
+      for (const file of tempFiles) {
+        try {
+          unlink(file, (err) => {
+            if (err) console.warn(`Warning: Failed to delete temporary file ${file}:`, err);
+            else console.log('Temporary file deleted:', file);
+          });
+        } catch (cleanupError) {
+          console.warn(`Warning: Failed to delete temporary file ${file}:`, cleanupError);
+        }
+      }
+
+      console.log('=== OCR PROCESS COMPLETED SUCCESSFULLY ===');
+      return ctx.send({ 
+        message: 'OCR processed successfully', 
+        text_length: extractedText.length,
+        text_preview: extractedText.substring(0, 100),
+        document_id: id,
+        pdf_id: pdfEntry.id
+      });
+    } catch (error) {
+      console.error('=== OCR PROCESS FAILED ===');
+      console.error('Unhandled OCR Error:', error);
+      
+      // Clean up temporary files on error
+      for (const file of tempFiles) {
+        try {
+          unlink(file, () => {});
+        } catch (e) {}
+      }
+      
+      return ctx.badRequest('Error processing PDF', { 
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
+  },
+};
