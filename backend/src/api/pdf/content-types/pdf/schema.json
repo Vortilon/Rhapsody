@@ -5,7 +5,7 @@
     "singularName": "pdf",
     "pluralName": "pdfs",
     "displayName": "PDF",
-    "description": ""
+    "description": "PDF documents with text extraction and analysis capabilities"
   },
   "options": {
     "draftAndPublish": true
@@ -18,7 +18,7 @@
     },
     "document_id": {
       "type": "uid",
-      "required": true
+      "required": false
     },
     "pdf_file": {
       "type": "media",
