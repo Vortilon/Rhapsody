@@ -22,7 +22,7 @@ module.exports = {
       
       // Find the PDF entry by ID
       const pdfEntry = await strapi.entityService.findOne('api::pdf.pdf', id, {
-        populate: ['pdf_file']
+        populate: ['file']
       });
       
       if (!pdfEntry) {
@@ -33,13 +33,13 @@ module.exports = {
       console.log('PDF Entry found:', pdfEntry.title);
       
       // Check if PDF file is attached
-      if (!pdfEntry.pdf_file) {
+      if (!pdfEntry.file) {
         console.log('No PDF file attached to this entry');
         return ctx.badRequest('No PDF file attached to this entry');
       }
       
       // Get file path
-      const fileUrl = pdfEntry.pdf_file.url;
+      const fileUrl = pdfEntry.file.url;
       const filePath = path.join(strapi.dirs.public, fileUrl);
       
       console.log(`File path: ${filePath}`);
@@ -123,7 +123,7 @@ module.exports = {
       }
       
       // Check if PDF has been processed
-      if (!pdfEntry.processed || !pdfEntry.extracted_text) {
+      if (!pdfEntry.extracted_text) {
         return ctx.badRequest('PDF has not been processed yet. Please process it first.');
       }
       
