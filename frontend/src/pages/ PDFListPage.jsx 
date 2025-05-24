@@ -1,0 +1,355 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CardActions,
+  CircularProgress,
+  Container,
+  Grid,
+  IconButton,
+  InputAdornment,
+  Paper,
+  TextField,
+  Typography,
+  Divider,
+  Chip,
+} from '@mui/material';
+import { styled } from '@mui/material/styles';
+import {
+  Add as AddIcon,
+  Search as SearchIcon,
+  PictureAsPdf as PdfIcon,
+  Delete as DeleteIcon,
+  Visibility as ViewIcon,
+  CloudUpload as UploadIcon,
+} from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
+
+// Styled components
+const UploadBox = styled(Paper)(({ theme }) => ({
+  padding: theme.spacing(3),
+  textAlign: 'center',
+  cursor: 'pointer',
+  border: `2px dashed ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.background.default,
+  transition: 'border-color 0.2s ease-in-out',
+  '&:hover': {
+    borderColor: theme.palette.primary.main,
+  },
+}));
+
+const VisuallyHiddenInput = styled('input')({
+  clip: 'rect(0 0 0 0)',
+  clipPath: 'inset(50%)',
+  height: 1,
+  overflow: 'hidden',
+  position: 'absolute',
+  bottom: 0,
+  left: 0,
+  whiteSpace: 'nowrap',
+  width: 1,
+});
+
+export default function PDFListPage() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [pdfs, setPdfs] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [uploadLoading, setUploadLoading] = useState(false);
+
+  useEffect(() => {
+    // Fetch PDFs
+    const fetchPDFs = async () => {
+      try {
+        setLoading(true);
+        // In a real implementation, you would fetch from your API
+        // const response = await fetch('http://167.88.36.83:1337/api/pdfs?populate=*');
+        // const data = await response.json();
+        // setPdfs(data.data);
+        
+        // Mock data for demonstration
+        setTimeout(() => {
+          setPdfs([
+            {
+              id: 'pdf1',
+              attributes: {
+                title: 'Lease Agreement',
+                createdAt: '2025-05-20T10:30:00Z',
+                processed: true,
+                file: {
+                  name: 'lease_agreement.pdf',
+                  size: 2500000,
+                },
+              }
+            },
+            {
+              id: 'pdf2',
+              attributes: {
+                title: 'Employment Contract',
+                createdAt: '2025-05-18T14:15:00Z',
+                processed: true,
+                file: {
+                  name: 'employment_contract.pdf',
+                  size: 1800000,
+                },
+              }
+            },
+            {
+              id: 'pdf3',
+              attributes: {
+                title: 'Non-Disclosure Agreement',
+                createdAt: '2025-05-15T09:45:00Z',
+                processed: false,
+                file: {
+                  name: 'nda.pdf',
+                  size: 950000,
+                },
+              }
+            },
+          ]);
+          setLoading(false);
+        }, 1000);
+      } catch (error) {
+        console.error('Error fetching PDFs:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchPDFs();
+  }, []);
+
+  const handleSearch = (e) => {
+    setSearchQuery(e.target.value);
+  };
+
+  const handleUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !file.type.includes('pdf')) return;
+    
+    setUploadLoading(true);
+    
+    try {
+      // In a real implementation, you would upload to your API
+      // const formData = new FormData();
+      // formData.append('files', file);
+      // const uploadResponse = await fetch('http://167.88.36.83:1337/api/upload', {
+      //   method: 'POST',
+      //   body: formData,
+      // });
+      // const uploadResult = await uploadResponse.json();
+      
+      // const pdfData = {
+      //   data: {
+      //     title: file.name.replace('.pdf', ''),
+      //     file: uploadResult[0].id,
+      //   }
+      // };
+      
+      // const createResponse = await fetch('http://167.88.36.83:1337/api/pdfs', {
+      //   method: 'POST',
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //   },
+      //   body: JSON.stringify(pdfData),
+      // });
+      
+      // const newPdf = await createResponse.json();
+      // setPdfs([newPdf.data, ...pdfs]);
+      
+      // Mock upload for demonstration
+      setTimeout(() => {
+        const newPdf = {
+          id: `pdf${pdfs.length + 1}`,
+          attributes: {
+            title: file.name.replace('.pdf', ''),
+            createdAt: new Date().toISOString(),
+            processed: false,
+            file: {
+              name: file.name,
+              size: file.size,
+            },
+          }
+        };
+        setPdfs([newPdf, ...pdfs]);
+        setUploadLoading(false);
+      }, 2000);
+    } catch (error) {
+      console.error('Error uploading PDF:', error);
+      setUploadLoading(false);
+    }
+  };
+
+  const handleViewPDF = (id) => {
+    navigate(`/pdfs/${id}`);
+  };
+
+  const handleDeletePDF = async (id) => {
+    try {
+      // In a real implementation, you would delete from your API
+      // await fetch(`http://167.88.36.83:1337/api/pdfs/${id}`, {
+      //   method: 'DELETE',
+      // });
+      
+      // Mock delete for demonstration
+      setPdfs(pdfs.filter(pdf => pdf.id !== id));
+    } catch (error) {
+      console.error('Error deleting PDF:', error);
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const filteredPdfs = pdfs.filter(pdf => 
+    pdf.attributes.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4" gutterBottom>
+          Document Library
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          Upload, view, and analyze your legal documents
+        </Typography>
+      </Box>
+      
+      <Grid container spacing={3}>
+        <Grid item xs={12}>
+          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+              <TextField
+                placeholder="Search documents..."
+                variant="outlined"
+                size="small"
+                value={searchQuery}
+                onChange={handleSearch}
+                sx={{ width: 300 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              
+              <Button
+                component="label"
+                variant="contained"
+                startIcon={uploadLoading ? <CircularProgress size={20} /> : <UploadIcon />}
+                disabled={uploadLoading}
+              >
+                Upload PDF
+                <VisuallyHiddenInput type="file" accept=".pdf" onChange={handleUpload} />
+              </Button>
+            </Box>
+            
+            <Divider sx={{ mb: 2 }} />
+            
+            {loading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : filteredPdfs.length > 0 ? (
+              <Grid container spacing={2}>
+                {filteredPdfs.map((pdf) => (
+                  <Grid item xs={12} sm={6} md={4} key={pdf.id}>
+                    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                      <CardContent sx={{ flexGrow: 1 }}>
+                        <Box sx={{ display: 'flex', mb: 2 }}>
+                          <PdfIcon color="primary" sx={{ fontSize: 40, mr: 2 }} />
+                          <Box>
+                            <Typography variant="h6" noWrap>
+                              {pdf.attributes.title}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {formatDate(pdf.attributes.createdAt)}
+                            </Typography>
+                          </Box>
+                        </Box>
+                        
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            {pdf.attributes.file.name}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {formatFileSize(pdf.attributes.file.size)}
+                          </Typography>
+                        </Box>
+                        
+                        <Box sx={{ mt: 2 }}>
+                          <Chip 
+                            label={pdf.attributes.processed ? "Processed" : "Processing"}
+                            color={pdf.attributes.processed ? "success" : "warning"}
+                            size="small"
+                          />
+                        </Box>
+                      </CardContent>
+                      
+                      <CardActions>
+                        <Button
+                          size="small"
+                          startIcon={<ViewIcon />}
+                          onClick={() => handleViewPDF(pdf.id)}
+                        >
+                          View
+                        </Button>
+                        <Button
+                          size="small"
+                          color="error"
+                          startIcon={<DeleteIcon />}
+                          onClick={() => handleDeletePDF(pdf.id)}
+                        >
+                          Delete
+                        </Button>
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 4 }}>
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  No documents found
+                </Typography>
+                {searchQuery ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Try a different search term or clear your search
+                  </Typography>
+                ) : (
+                  <Box sx={{ mt: 2 }}>
+                    <Button
+                      component="label"
+                      variant="contained"
+                      startIcon={<AddIcon />}
+                    >
+                      Upload your first document
+                      <VisuallyHiddenInput type="file" accept=".pdf" onChange={handleUpload} />
+                    </Button>
+                  </Box>
+                )}
+              </Box>
+            )}
+          </Paper>
+        </Grid>
+      </Grid>
+    </Container>
+  );
+}

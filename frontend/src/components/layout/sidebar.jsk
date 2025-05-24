@@ -1,0 +1,179 @@
+import React, { useState } from 'react';
+import { useNavigate, NavLink as RouterLink } from 'react-router-dom';
+import {
+  Box,
+  Drawer,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  Typography,
+  Collapse,
+} from '@mui/material';
+import { styled } from '@mui/material/styles';
+import {
+  Dashboard as DashboardIcon,
+  Description as DocumentIcon,
+  Upload as UploadIcon,
+  ExpandLess,
+  ExpandMore,
+  Gavel as LegalIcon,
+  Business as BusinessIcon,
+  People as PeopleIcon,
+  Settings as SettingsIcon,
+} from '@mui/icons-material';
+import Logo from '../logo';
+
+const DrawerHeader = styled('div')(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  padding: theme.spacing(0, 1),
+  ...theme.mixins.toolbar,
+  justifyContent: 'center',
+}));
+
+export default function Sidebar({ open, drawerWidth, onDrawerToggle }) {
+  const navigate = useNavigate();
+  const [openSubmenu, setOpenSubmenu] = useState('');
+
+  const handleSubmenuClick = (key) => {
+    setOpenSubmenu(openSubmenu === key ? '' : key);
+  };
+
+  const menuItems = [
+    {
+      title: 'Dashboard',
+      icon: <DashboardIcon />,
+      path: '/dashboard',
+    },
+    {
+      title: 'Documents',
+      icon: <DocumentIcon />,
+      key: 'documents',
+      submenu: [
+        {
+          title: 'All Documents',
+          path: '/pdfs',
+        },
+        {
+          title: 'Upload Document',
+          path: '/pdfs/upload',
+        },
+      ],
+    },
+    {
+      title: 'Not A Lawyer',
+      icon: <LegalIcon />,
+      key: 'legal',
+      submenu: [
+        {
+          title: 'Contract Analysis',
+          path: '/legal/contracts',
+        },
+        {
+          title: 'Legal Research',
+          path: '/legal/research',
+        },
+      ],
+    },
+    {
+      title: 'Companies',
+      icon: <BusinessIcon />,
+      path: '/companies',
+    },
+    {
+      title: 'Users',
+      icon: <PeopleIcon />,
+      path: '/users',
+    },
+    {
+      title: 'Settings',
+      icon: <SettingsIcon />,
+      path: '/settings',
+    },
+  ];
+
+  return (
+    <Drawer
+      sx={{
+        width: drawerWidth,
+        flexShrink: 0,
+        '& .MuiDrawer-paper': {
+          width: drawerWidth,
+          boxSizing: 'border-box',
+        },
+      }}
+      variant="persistent"
+      anchor="left"
+      open={open}
+    >
+      <DrawerHeader>
+        <Box sx={{ display: 'flex', alignItems: 'center', py: 2 }}>
+          <Logo sx={{ height: 40, mr: 1 }} />
+          <Typography variant="h6" noWrap component="div">
+            Vortilon
+          </Typography>
+        </Box>
+      </DrawerHeader>
+      
+      <Divider />
+      
+      <List>
+        {menuItems.map((item) => (
+          <React.Fragment key={item.title}>
+            {item.submenu ? (
+              <>
+                <ListItem disablePadding>
+                  <ListItemButton onClick={() => handleSubmenuClick(item.key)}>
+                    <ListItemIcon>
+                      {item.icon}
+                    </ListItemIcon>
+                    <ListItemText primary={item.title} />
+                    {openSubmenu === item.key ? <ExpandLess /> : <ExpandMore />}
+                  </ListItemButton>
+                </ListItem>
+                
+                <Collapse in={openSubmenu === item.key} timeout="auto" unmountOnExit>
+                  <List component="div" disablePadding>
+                    {item.submenu.map((subitem) => (
+                      <ListItemButton
+                        key={subitem.title}
+                        sx={{ pl: 4 }}
+                        component={RouterLink}
+                        to={subitem.path}
+                      >
+                        <ListItemText primary={subitem.title} />
+                      </ListItemButton>
+                    ))}
+                  </List>
+                </Collapse>
+              </>
+            ) : (
+              <ListItem disablePadding>
+                <ListItemButton
+                  component={RouterLink}
+                  to={item.path}
+                >
+                  <ListItemIcon>
+                    {item.icon}
+                  </ListItemIcon>
+                  <ListItemText primary={item.title} />
+                </ListItemButton>
+              </ListItem>
+            )}
+          </React.Fragment>
+        ))}
+      </List>
+      
+      <Box sx={{ flexGrow: 1 }} />
+      
+      <Box sx={{ p: 2 }}>
+        <Typography variant="body2" color="text.secondary" align="center">
+          © 2025 Vortilon
+        </Typography>
+      </Box>
+    </Drawer>
+  );
+}
