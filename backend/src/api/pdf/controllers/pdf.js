@@ -16,11 +16,7 @@ module.exports = {
       // Find the published PDF entry with title
       const pdfEntry = await strapi.db.query('api::pdf.pdf').findOne({
         where: {
-          document_id: id,
-          $or: [
-            { publishedAt: { $ne: null } },
-            { published_at: { $ne: null } }
-          ]
+          document_id: id
         },
         populate: { pdf_file: true }, // Ensure the relation is populated
         select: ['id', 'title', 'document_id'],
