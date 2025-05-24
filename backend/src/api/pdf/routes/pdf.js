@@ -2,6 +2,7 @@
 
 /**
  * PDF routes configuration for Strapi
+ * Updated to fix Method Not Allowed error
  */
 
 module.exports = {
