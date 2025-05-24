@@ -4,7 +4,7 @@ module.exports = {
   routes: [
     {
       method: 'POST',
-      path: '/pdfs/:document_id/process',
+      path: '/pdfs/:id/process',
       handler: 'pdf.processPDF',
       config: {
         policies: [],
@@ -15,7 +15,7 @@ module.exports = {
     },
     {
       method: 'POST',
-      path: '/pdfs/:document_id/analyze',
+      path: '/pdfs/:id/analyze',
       handler: 'pdf.analyzePDF',
       config: {
         policies: [],

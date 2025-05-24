@@ -38,151 +38,240 @@ module.exports = {
         return ctx.badRequest('PDF file data not found in entry');
       }
 
-      // Access the file directly (no need to parse if it's a relation)
-      const fileData = pdfEntry.pdf_file;
-      console.log('File Data:', JSON.stringify(fileData, null, 2));
-
-      if (!fileData.id) {
-        console.log(`File data does not contain an ID for document_id: ${id}`);
-        return ctx.badRequest('Invalid file data structure');
-      }
-
-      // Fetch the file entry using the CORRECT model name: plugin::upload.file
-      const fileEntry = await strapi.db.query('plugin::upload.file').findOne({
-        where: { id: fileData.id },
-        select: ['url', 'hash', 'name'],
+      // Get the file information using the correct model name
+      const fileInfo = await strapi.query('plugin::upload.file').findOne({
+        where: { id: pdfEntry.pdf_file.id }
       });
 
-      console.log('File Entry:', JSON.stringify(fileEntry, null, 2));
+      console.log('File Info:', JSON.stringify(fileInfo, null, 2));
 
-      if (!fileEntry || !fileEntry.url) {
-        console.log(`File entry not found or missing URL for file ID: ${fileData.id}`);
-        return ctx.badRequest('File entry not found in files table');
+      if (!fileInfo) {
+        console.log(`File information not found for id: ${pdfEntry.pdf_file.id}`);
+        return ctx.badRequest('File information not found');
       }
 
-      // Construct the full path using the URL
-      const relativePath = fileEntry.url; // e.g., /uploads/invoice_79e43b0785.pdf
-      const pdfPath = path.join('/root/vortilon-app/backend/public', relativePath);
-      console.log('PDF Path:', pdfPath);
+      // Construct the file path
+      const filePath = path.join(strapi.dirs.public, fileInfo.url);
+      console.log(`Constructed file path: ${filePath}`);
 
-      // Verify file exists before proceeding
-      if (!fs.existsSync(pdfPath)) {
-        console.error(`File does not exist at path: ${pdfPath}`);
-        return ctx.badRequest('PDF file not found on disk', { path: pdfPath });
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        console.log(`File does not exist at path: ${filePath}`);
+        return ctx.badRequest('PDF file not found on disk');
       }
-      console.log(`File exists at path: ${pdfPath}`);
 
-      // Create a unique output name and directory
-      const timestamp = Date.now();
-      const outputDir = '/root/vortilon-app/backend/public/uploads';
-      const outputBaseName = `ocr_${timestamp}`;
-      
-      console.log(`Output images will be saved to: ${outputDir}/${outputBaseName}`);
-      
-      // Use pdftoppm to convert all pages of the PDF to PNG
+      // Create temp directory for images
+      const tempDir = path.join(strapi.dirs.public, 'uploads', 'temp', id);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      console.log(`Created temp directory: ${tempDir}`);
+
+      // Convert PDF to images using pdf2pic
+      const options = {
+        density: 300,
+        saveFilename: `page`,
+        savePath: tempDir,
+        format: 'png',
+        width: 2000,
+        height: 2000
+      };
+
+      let pageCount = 0;
+      let extractedText = '';
+
       try {
-        console.log('Converting PDF to images using pdftoppm...');
-        // Convert all pages of PDF to PNG
-        execSync(`pdftoppm -png "${pdfPath}" "${path.join(outputDir, outputBaseName)}"`);
-        console.log('PDF conversion completed');
-      } catch (conversionError) {
-        console.error('PDF conversion error:', conversionError);
+        console.log('Attempting to convert PDF to images using pdf2pic...');
+        const convert = fromPath(filePath, options);
         
-        // Fallback to pdf2pic if pdftoppm fails
-        console.log('Falling back to pdf2pic...');
-        try {
-          const options = {
-            density: 150,
-            format: 'png',
-            width: 800,
-            height: 800,
-            outputDir: outputDir,
-            outputName: outputBaseName,
-            saveFilename: outputBaseName
-          };
-          
-          const convert = fromPath(pdfPath, options);
-          const result = await convert.bulk(-1); // Process all pages
-          console.log('pdf2pic conversion result:', result);
-        } catch (pdf2picError) {
-          console.error('pdf2pic conversion error:', pdf2picError);
-          return ctx.badRequest('Failed to convert PDF to image', { 
-            pdftoppm_error: conversionError.message,
-            pdf2pic_error: pdf2picError.message 
+        // Get total page count
+        pageCount = await convert.bulk(-1, { responseType: 'array' })
+          .then(results => {
+            console.log(`Converted ${results.length} pages to images`);
+            return results.length;
           });
-        }
-      }
-      
-      // Collect all converted images
-      const files = fs.readdirSync(outputDir);
-      const imageFiles = files
-        .filter(file => file.startsWith(outputBaseName) && file.endsWith('.png'))
-        .map(file => path.join(outputDir, file))
-        .sort(); // Sort to process pages in order
-      
-      if (imageFiles.length === 0) {
-        console.log('No converted images found');
-        return ctx.badRequest('Could not find converted image files');
-      }
-
-      console.log(`Found ${imageFiles.length} pages to process`);
-
-      // Perform OCR on all pages and concatenate the text
-      console.log('Initializing Tesseract worker for v6.0.1...');
-      const scheduler = createScheduler();
-      const worker = await createWorker('eng');
-      scheduler.addWorker(worker);
-
-      let fullText = '';
-      for (const imagePath of imageFiles) {
-        console.log(`Processing page: ${imagePath}`);
-        const result = await scheduler.addJob('recognize', imagePath);
-        const text = result.data.text;
-        fullText += text + '\n\n'; // Add separator between pages
-        console.log(`Extracted text length for page: ${text.length}`);
-      }
-
-      // Terminate the worker and scheduler
-      await scheduler.terminate();
-      console.log('Tesseract worker and scheduler terminated');
-
-      // Clean up temporary image files
-      for (const imagePath of imageFiles) {
+      } catch (pdfError) {
+        console.error('Error converting PDF with pdf2pic:', pdfError);
+        
+        // Fallback to pdftoppm if available
         try {
-          fs.unlinkSync(imagePath);
-          console.log(`Temporary image deleted: ${imagePath}`);
-        } catch (cleanupError) {
-          console.warn(`Warning: Failed to delete temporary image: ${imagePath}`, cleanupError);
+          console.log('Attempting fallback conversion with pdftoppm...');
+          execSync(`pdftoppm -png -r 300 "${filePath}" "${tempDir}/page"`);
+          
+          // Count the number of generated files
+          const files = fs.readdirSync(tempDir).filter(file => file.endsWith('.png'));
+          pageCount = files.length;
+          console.log(`Converted ${pageCount} pages using pdftoppm`);
+        } catch (fallbackError) {
+          console.error('Fallback conversion failed:', fallbackError);
+          return ctx.badRequest('Failed to convert PDF to images');
         }
       }
 
-      console.log('OCR completed successfully. Total text length:', fullText.length);
-      console.log('First 100 chars of extracted text:', fullText.substring(0, 100));
+      if (pageCount === 0) {
+        console.log('No pages were converted from the PDF');
+        return ctx.badRequest('Failed to extract pages from PDF');
+      }
 
-      // Update the PDF entry with extracted text and title
-      await strapi.entityService.update('api::pdf.pdf', pdfEntry.id, {
+      // Set up Tesseract scheduler
+      console.log('Setting up Tesseract OCR...');
+      const scheduler = createScheduler();
+      const numWorkers = Math.min(4, Math.max(1, require('os').cpus().length - 1));
+      
+      // Create workers
+      const workers = [];
+      for (let i = 0; i < numWorkers; i++) {
+        const worker = await createWorker();
+        await worker.loadLanguage('eng');
+        await worker.initialize('eng');
+        scheduler.addWorker(worker);
+        workers.push(worker);
+      }
+
+      console.log(`Created ${numWorkers} Tesseract workers`);
+
+      // Process each page
+      const pageData = [];
+      for (let i = 1; i <= pageCount; i++) {
+        const pageNum = i;
+        const imagePath = path.join(tempDir, `page${pageNum > 1 ? '-' + (pageNum - 1) : ''}.png`);
+        
+        if (!fs.existsSync(imagePath)) {
+          console.log(`Image not found for page ${pageNum}: ${imagePath}`);
+          continue;
+        }
+
+        console.log(`Processing page ${pageNum}/${pageCount}: ${imagePath}`);
+        
+        try {
+          const { data } = await scheduler.addJob('recognize', imagePath);
+          extractedText += `\n\n--- PAGE ${pageNum} ---\n\n${data.text}`;
+          
+          pageData.push({
+            page_number: pageNum,
+            text: data.text,
+            image_path: imagePath.replace(strapi.dirs.public, '')
+          });
+          
+          console.log(`Completed OCR for page ${pageNum}`);
+        } catch (ocrError) {
+          console.error(`OCR error on page ${pageNum}:`, ocrError);
+        }
+      }
+
+      // Terminate workers
+      console.log('Terminating Tesseract workers...');
+      for (const worker of workers) {
+        await worker.terminate();
+      }
+
+      // Save the extracted text to a file
+      const textFilePath = path.join(tempDir, 'extracted_text.txt');
+      fs.writeFileSync(textFilePath, extractedText);
+      console.log(`Saved extracted text to: ${textFilePath}`);
+
+      // Update the PDF entry with the extracted data
+      await strapi.db.query('api::pdf.pdf').update({
+        where: { id: pdfEntry.id },
         data: {
-          extracted_text: fullText,
-          title: pdfEntry.title || 'Default Title', // Ensure title is included
-        },
+          processed: true,
+          page_count: pageCount,
+          extracted_text: extractedText,
+          pages: pageData,
+          text_file_path: textFilePath.replace(strapi.dirs.public, '')
+        }
       });
-      console.log(`Updated PDF entry ${pdfEntry.id} with extracted text`);
 
-      console.log('=== OCR PROCESS COMPLETED SUCCESSFULLY ===');
-      return ctx.send({ 
-        message: 'OCR processed successfully', 
-        text_length: fullText.length,
-        text_preview: fullText.substring(0, 100),
-        document_id: id,
-        pdf_id: pdfEntry.id
+      console.log('Updated PDF entry with extracted data');
+
+      return ctx.send({
+        success: true,
+        message: 'PDF processed successfully',
+        data: {
+          id: pdfEntry.id,
+          document_id: id,
+          page_count: pageCount,
+          text_file_path: textFilePath.replace(strapi.dirs.public, '')
+        }
       });
     } catch (error) {
-      console.error('=== OCR PROCESS FAILED ===');
-      console.error('Unhandled OCR Error:', error);
-      return ctx.badRequest('Error processing PDF', { 
-        details: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-      });
+      console.error('Error processing PDF:', error);
+      return ctx.badRequest(`Error processing PDF: ${error.message}`);
     }
   },
+
+  async analyzePDF(ctx) {
+    try {
+      const { id } = ctx.params;
+      const { query } = ctx.request.body;
+
+      if (!query) {
+        return ctx.badRequest('Query is required for analysis');
+      }
+
+      // Find the PDF entry
+      const pdfEntry = await strapi.db.query('api::pdf.pdf').findOne({
+        where: { document_id: id },
+        select: ['id', 'title', 'document_id', 'extracted_text', 'processed']
+      });
+
+      if (!pdfEntry) {
+        return ctx.notFound('PDF not found');
+      }
+
+      if (!pdfEntry.processed || !pdfEntry.extracted_text) {
+        return ctx.badRequest('PDF has not been processed yet. Please process it first.');
+      }
+
+      // In a real implementation, you would call an AI service here
+      // For example, using OpenAI's API:
+      /*
+      const openai = require('openai');
+      const client = new openai.OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
+
+      const response = await client.chat.completions.create({
+        model: "gpt-4",
+        messages: [
+          {
+            role: "system",
+            content: "You are an AI assistant that analyzes legal documents and contracts."
+          },
+          {
+            role: "user",
+            content: `Analyze the following document and answer this question: ${query}\n\nDocument content:\n${pdfEntry.extracted_text}`
+          }
+        ],
+        temperature: 0,
+        max_tokens: 1000
+      });
+
+      const analysis = response.choices[0].message.content;
+      */
+
+      // For now, we'll return a mock response
+      const analysis = `Based on my analysis of the document "${pdfEntry.title}" regarding "${query}":
+
+The document contains several sections related to your query. The most relevant information appears on pages 3-5, where the contract specifies the terms and conditions you're asking about.
+
+Key points:
+1. The agreement requires [specific condition related to query]
+2. There are exceptions under [relevant section]
+3. The parties must comply with [relevant requirements]
+
+This analysis is based on the extracted text from the document. For a more detailed understanding, please consult with a legal professional.`;
+
+      return ctx.send({
+        success: true,
+        document_id: id,
+        query,
+        result: analysis
+      });
+    } catch (error) {
+      console.error('Error analyzing PDF:', error);
+      return ctx.badRequest(`Error analyzing PDF: ${error.message}`);
+    }
+  }
 };
