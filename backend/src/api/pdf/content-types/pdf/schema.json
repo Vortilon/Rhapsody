@@ -4,59 +4,46 @@
   "info": {
     "singularName": "pdf",
     "pluralName": "pdfs",
-    "displayName": "PDF"
+    "displayName": "PDF",
+    "description": ""
   },
   "options": {
     "draftAndPublish": true
   },
+  "pluginOptions": {},
   "attributes": {
     "title": {
       "type": "string",
       "required": true
     },
-    "file": {
-      "type": "media",
-      "multiple": false,
+    "document_id": {
+      "type": "uid",
       "required": true
     },
-    "uploaded_by": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::app-user.app-user",
-      "inversedBy": "pdfs"
-    },
-    "lessor": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::lessor.lessor",
-      "inversedBy": "pdfs"
-    },
-    "conditions": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::condition.condition",
-      "mappedBy": "pdf"
-    },
-    "reports": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::report.report",
-      "mappedBy": "pdf"
-    },
-    "indexes": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::index.index",
-      "mappedBy": "pdf"
-    },
-    "modules": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::module.module",
-      "mappedBy": "pdf"
+    "pdf_file": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": [
+        "files"
+      ]
     },
     "extracted_text": {
-      "type": "text"
+      "type": "text",
+      "maxLength": 1000000
+    },
+    "processed": {
+      "type": "boolean",
+      "default": false
+    },
+    "page_count": {
+      "type": "integer"
+    },
+    "pages": {
+      "type": "json"
+    },
+    "text_file_path": {
+      "type": "string"
     }
   }
 }
