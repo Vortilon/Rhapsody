@@ -13,51 +13,100 @@ module.exports = {
       const { id } = ctx.params;
       console.log(`Processing PDF with document_id: ${id}`);
       
-      // Find the published PDF entry with title
+      // Find the PDF entry regardless of publication status
       const pdfEntry = await strapi.db.query('api::pdf.pdf').findOne({
-        where: {
-          document_id: id
-        },
-        populate: { pdf_file: true }, // Ensure the relation is populated
-        select: ['id', 'title', 'document_id'],
+        where: { id },
+        populate: ['pdf_file'],
       });
 
       console.log('PDF Entry:', JSON.stringify(pdfEntry, null, 2));
 
       if (!pdfEntry) {
-        console.log(`No PDF entry found with document_id: ${id}`);
+        console.log(`No PDF entry found with id: ${id}`);
         return ctx.badRequest('PDF entry not found');
       }
 
       if (!pdfEntry.pdf_file) {
-        console.log(`PDF entry found but file data is missing for document_id: ${id}`);
-        return ctx.badRequest('PDF file data not found in entry');
+        console.log(`PDF entry found but file data is missing for id: ${id}`);
+        
+        // Try to find the file directly from the upload plugin
+        const files = await strapi.entityService.findMany('plugin::upload.file', {
+          filters: {
+            related: [
+              {
+                id: pdfEntry.id,
+                __component: 'api::pdf.pdf',
+              },
+            ],
+          },
+        });
+        
+        console.log('Found related files:', JSON.stringify(files, null, 2));
+        
+        if (!files || files.length === 0) {
+          return ctx.badRequest('No PDF file found for this entry. Please upload a PDF file first.');
+        }
+        
+        // Use the first related file
+        const fileInfo = files[0];
+        
+        // Update the PDF entry with the file relation
+        await strapi.entityService.update('api::pdf.pdf', pdfEntry.id, {
+          data: {
+            pdf_file: fileInfo.id,
+          },
+        });
+        
+        console.log(`Updated PDF entry with file relation: ${fileInfo.id}`);
+        
+        // Construct the file path
+        const filePath = path.join(strapi.dirs.public, fileInfo.url);
+        console.log(`Constructed file path: ${filePath}`);
+        
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+          console.log(`File does not exist at path: ${filePath}`);
+          return ctx.badRequest('PDF file not found on disk');
+        }
+        
+        // Continue processing with this file
+        return await this.processFile(ctx, pdfEntry, fileInfo, filePath);
+      } else {
+        // Get the file information using the correct model name
+        const fileInfo = await strapi.query('plugin::upload.file').findOne({
+          where: { id: pdfEntry.pdf_file.id }
+        });
+
+        console.log('File Info:', JSON.stringify(fileInfo, null, 2));
+
+        if (!fileInfo) {
+          console.log(`File information not found for id: ${pdfEntry.pdf_file.id}`);
+          return ctx.badRequest('File information not found');
+        }
+
+        // Construct the file path
+        const filePath = path.join(strapi.dirs.public, fileInfo.url);
+        console.log(`Constructed file path: ${filePath}`);
+
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+          console.log(`File does not exist at path: ${filePath}`);
+          return ctx.badRequest('PDF file not found on disk');
+        }
+        
+        // Continue processing with this file
+        return await this.processFile(ctx, pdfEntry, fileInfo, filePath);
       }
-
-      // Get the file information using the correct model name
-      const fileInfo = await strapi.query('plugin::upload.file').findOne({
-        where: { id: pdfEntry.pdf_file.id }
-      });
-
-      console.log('File Info:', JSON.stringify(fileInfo, null, 2));
-
-      if (!fileInfo) {
-        console.log(`File information not found for id: ${pdfEntry.pdf_file.id}`);
-        return ctx.badRequest('File information not found');
-      }
-
-      // Construct the file path
-      const filePath = path.join(strapi.dirs.public, fileInfo.url);
-      console.log(`Constructed file path: ${filePath}`);
-
-      // Check if file exists
-      if (!fs.existsSync(filePath)) {
-        console.log(`File does not exist at path: ${filePath}`);
-        return ctx.badRequest('PDF file not found on disk');
-      }
-
+    } catch (error) {
+      console.error('Error processing PDF:', error);
+      return ctx.badRequest(`Error processing PDF: ${error.message}`);
+    }
+  },
+  
+  async processFile(ctx, pdfEntry, fileInfo, filePath) {
+    try {
       // Create temp directory for images
-      const tempDir = path.join(strapi.dirs.public, 'uploads', 'temp', id);
+      const tempDir = path.join(strapi.dirs.public, 'uploads', 'temp', pdfEntry.id);
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
@@ -186,14 +235,13 @@ module.exports = {
         message: 'PDF processed successfully',
         data: {
           id: pdfEntry.id,
-          document_id: id,
           page_count: pageCount,
           text_file_path: textFilePath.replace(strapi.dirs.public, '')
         }
       });
     } catch (error) {
-      console.error('Error processing PDF:', error);
-      return ctx.badRequest(`Error processing PDF: ${error.message}`);
+      console.error('Error in processFile:', error);
+      return ctx.badRequest(`Error processing file: ${error.message}`);
     }
   },
 
@@ -208,8 +256,8 @@ module.exports = {
 
       // Find the PDF entry
       const pdfEntry = await strapi.db.query('api::pdf.pdf').findOne({
-        where: { document_id: id },
-        select: ['id', 'title', 'document_id', 'extracted_text', 'processed']
+        where: { id },
+        select: ['id', 'title', 'extracted_text', 'processed']
       });
 
       if (!pdfEntry) {
